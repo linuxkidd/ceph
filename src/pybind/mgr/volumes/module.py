@@ -922,12 +922,13 @@ class Module(orchestrator.OrchestratorClientMixin, MgrModule):
         if not self.enabled:
             return 0, "", "volumes already disabled!"
         confirm = cmd.get('yes-i-really-mean-it', None)
-        if(confirm):
-            self.shutdown()
-            self.off()
-            return 0, "", "volumes disabled"
+        if confirm != '--yes-i-really-mean-it':
+            return -errno.EPERM, "", "WARNING: Disabling the Volumes plugin is dangerous.  If you are *ABSOLUTELY CERTAIN*, please re-issue the command followed by --yes-i-really-mean-it"
+
+        self.shutdown()
+        self.off()
+        return 0, "", "volumes disabled"
         
-        return -errno.EINVAL, "", "WARNING: Disabling the Volumes plugin is dangerous.  Please provide --yes-i-really-mean-it to confirm."
 
     @mgr_cmd_wrap
     def _cmd_fs_volumes_on(self, inbuf, cmd):
