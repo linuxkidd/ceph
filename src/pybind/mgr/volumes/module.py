@@ -925,8 +925,9 @@ class Module(orchestrator.OrchestratorClientMixin, MgrModule):
         if(confirm):
             self.shutdown()
             self.off()
-
-        return 0, "", "volumes disabled"
+            return 0, "", "volumes disabled"
+        
+        return -errno.EINVAL, "", "WARNING: Disabling the Volumes plugin is dangerous.  Please provide --yes-i-really-mean-it to confirm."
 
     @mgr_cmd_wrap
     def _cmd_fs_volumes_on(self, inbuf, cmd):
