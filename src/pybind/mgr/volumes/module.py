@@ -481,6 +481,16 @@ class Module(orchestrator.OrchestratorClientMixin, MgrModule):
             'desc': "Cancel an pending or ongoing clone operation.",
             'perm': 'r'
         },
+        {
+            'cmd': 'fs volumes off',
+            'desc': 'Temporarily disable the Ceph MGR Volumes Plugin',
+            'perm': 'rw'
+        },
+        {
+            'cmd': 'fs volumes on',
+            'desc': 'Re-enable Ceph the MGR Volumes Plugin',
+            'perm': 'rw'
+        }
         # volume ls [recursive]
         # subvolume ls <volume>
         # volume authorize/deauthorize
@@ -518,7 +528,12 @@ class Module(orchestrator.OrchestratorClientMixin, MgrModule):
             'snapshot_clone_no_wait',
             type='bool',
             default=True,
-            desc='Reject subvolume clone request when cloner threads are busy')
+            desc='Reject subvolume clone request when cloner threads are busy'),
+        Option(
+            'enabled',
+            default=True,
+            type='bool',
+        )
     ]
 
     def __init__(self, *args, **kwargs):
@@ -529,12 +544,19 @@ class Module(orchestrator.OrchestratorClientMixin, MgrModule):
         self.periodic_async_work = False
         self.snapshot_clone_no_wait = None
         self.lock = threading.Lock()
+        self.enabled = True
         super(Module, self).__init__(*args, **kwargs)
         # Initialize config option members
         self.config_notify()
         with self.lock:
             self.vc = VolumeClient(self)
             self.inited = True
+
+    def on(self):
+        self.set_module_option('enabled','true')
+
+    def off(self):
+        self.set_module_option('enabled','false')
 
     def shutdown(self):
         self.vc.shutdown()
@@ -567,6 +589,9 @@ class Module(orchestrator.OrchestratorClientMixin, MgrModule):
 
     def handle_command(self, inbuf, cmd):
         handler_name = "_cmd_" + cmd['prefix'].replace(" ", "_")
+        if not self.enabled:
+            if cmd['prefix'] != "fs volumes on":
+                return -errno.EINVAL, "", "volumes plugin is disabled"
         try:
             handler = getattr(self, handler_name)
         except AttributeError:
@@ -891,6 +916,25 @@ class Module(orchestrator.OrchestratorClientMixin, MgrModule):
     def _cmd_fs_clone_cancel(self, inbuf, cmd):
         return self.vc.clone_cancel(
             vol_name=cmd['vol_name'], clone_name=cmd['clone_name'], group_name=cmd.get('group_name', None))
+
+    @mgr_cmd_wrap
+    def _cmd_fs_volumes_off(self, inbuf, cmd):
+        if not self.enabled:
+            return 0, "", "volumes already disabled!"
+        confirm = cmd.get('yes-i-really-mean-it', None)
+        if(confirm):
+            self.shutdown()
+            self.off()
+
+        return 0, "", "volumes disabled"
+
+    @mgr_cmd_wrap
+    def _cmd_fs_volumes_on(self, inbuf, cmd):
+        if self.enabled:
+            return 0, "", "volumes already enabled!"
+        self.on()
+        return 0, "", "volumes enabled"
+
 
     # remote method
     def subvolume_getpath(self, vol_name, subvol, group_name):
